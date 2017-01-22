@@ -21,26 +21,32 @@ If the options are not provided the test browsers from settings.js file are used
 		mobile: {
 			alias: 'm',
 			description: 'Mobile',
+		},
+		rounds: {
+			alias: 'n',
+			description: 'Number of tests',
 		}
 	})
 	.help('help')
 	.argv;
 
 if (argv._.length >= 1) {
-	var useFile = false;
-	var config = { location: 'Hong Kong', name: 'Chrome', isMobile: false };
+	var config = [{ location: 'Hong Kong', name: 'Chrome', isMobile: false }];
 
 	if (argv.location)
-		config.location = argv.location;
+		config[0].location = argv.location;
 
 	if (argv.browser)
-		config.name = argv.browser
+		config[0].name = argv.browser;
 
 	if (argv.mobile)
-		config.isMobile = argv.mobile
+		config[0].isMobile = validator.toBoolean(argv.mobile.toString());
 
-	if (argv.location || argv.browser || argv.mobile)
-		useFile = true;
+	if (argv.rounds)
+		settings.rounds = argv.rounds;
+
+	if (argv.location || argv.browser || argv.mobile) 
+		settings.browsers = config;
 
 	var urls = [argv._[0]];
 	if (!validUrl.isUri(argv._[0])) {
@@ -54,4 +60,5 @@ if (argv._.length >= 1) {
 	}
 
 	console.log('Starting test on ' + urls.length + ' urls');
+	console.log(settings);
 }
