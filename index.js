@@ -60,5 +60,52 @@ if (argv._.length >= 1) {
 	}
 
 	console.log('Starting test on ' + urls.length + ' urls');
-	console.log(settings);
 }
+
+
+
+var kue = require('kue');
+var queue = kue.createQueue();
+queue.watchStuckJobs(5000)
+
+var promises = [];
+for (let i=0; i<settings.rounds; i++) {
+	for (let url of urls) {
+		for (let browser of settings.browsers) {
+			promises.push(new Promise((resolve, reject) => {
+				job = queue.create('sitespeed-startanalysis', {
+					url: url,
+					browser: browser
+				}).removeOnComplete(true).save(err => {
+					!err ? resolve() : reject(err);
+				});
+			}));
+		}
+	}
+}
+
+Promise.all(promises).then(values => {
+	process.exit(0);
+})
+
+
+
+
+// queue.on('job enqueue', function(id, type) {
+// 	kue.Job.get( id, function( err, job ) {
+// 		console.log('Queued task #' + id + ' for ' + job.data.url + ' with ' + JSON.stringify(job.data.browser));
+// 	});
+// }).on('job complete', function(id, result) {
+// 	queue.inactiveCount(function( err, total) {
+// 		console.log('Task #' + id + ' completed, ' + total + ' task remaining'); // others are activeCount, completeCount, failedCount, delayedCount
+// 		if (total == 0)
+// 			process.exit(0);
+// 	});
+// });
+
+//  process.on('SIGTERM', () => {
+//  	queue.shutdown(5000, err => {
+//  		console.log('Queue shutdown', err || '');
+// 		process.exit(0);
+//  	})
+// });

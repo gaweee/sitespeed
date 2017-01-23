@@ -1,6 +1,7 @@
 module.exports = {
-	token: '5883909d0cf24b310ad66514',
-	domain: 'https://www.dareboost.com/api/0.5',
+	token: 'Your Token Here',
+	domain: 'https://www.dareboost.com/api/0.5/',
+	rounds: 1,
 	browsers: [
 		{ location: 'Sydney', name: 'Chrome', isMobile: false },
 		{ location: 'Sydney', name: 'Galaxy S6', isMobile: true },
