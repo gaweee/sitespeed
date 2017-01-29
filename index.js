@@ -1,24 +1,30 @@
 var validator = require('validator');
 var validUrl = require('valid-url');
+var sleep = require('sleep');
 var colors = require('colors');
-var settings = require(__dirname + '/settings.js');
-var analyze = require(__dirname + '/analyze.js');
-var report = require(__dirname + '/report.js');
-var logger = require(__dirname + '/logger.js');
+var tmp = require('tmp');
+var key = tmp.tmpNameSync({ template: 'XXXXXXXX' });
 
-// Setup Queue
-var counts = { analyze: 0, report: 0, analyzeCompleted: 0, reportCompleted: 0 };
+var ProgressBar = require('progress');
+var settings = require(__dirname + '/settings.js');
+var logger = require(__dirname + '/logger.js');
+var cfork = require('cfork');
+
+/*------------------- Setup Queue -------------------*/
 var kue = require('kue');
 var queue = kue.createQueue();
-queue.watchStuckJobs(5000);
+var progress;
+// queue.watchStuckJobs(8000);
 
+// Start cleanup
+cfork({ exec: __dirname + '/lib/cleanup.js', count: 1 });
 
 /*------------------- CLI Definitions -------------------*/
+// @Todo setup commands test with url or path, resume with key, dry-run
 var argv = require("yargs")
 	.usage(`Usage: $0 <url|url.txt> [options]
 
 If the options are not provided the test browsers from settings.js file are used instead`)
-	//.demand(1) // Consider adding a flag to resume
 	.options({
 		location: {
 			alias: 'l',
@@ -40,7 +46,8 @@ If the options are not provided the test browsers from settings.js file are used
 	.help('help')
 	.argv;
 
-var promisesQueue = [];
+
+var queuePromises = [];
 // Loading of new URLS
 if (argv._.length >= 1) {
 	var config = [{ location: 'Hong Kong', name: 'Chrome', isMobile: false }];
@@ -67,157 +74,150 @@ if (argv._.length >= 1) {
     		urls = fs.readFileSync(argv._[0]).toString().split('\n');
 		} else {
 			console.log('Error: Neither a file nor a valid url provided');
-			terminate();
+			terminate(false);
 		}
 	}
 
-	counts.analyze = urls.length * settings.browsers.length * settings.rounds;
-	counts.report = counts.analyze;
-
+	console.log("This is your key: " + colors.magenta(key) + ". Keep it, it's used for resuming the test");
 	console.log('Loading the following test configurations');
 	for (let browser of settings.browsers)
-		console.log('\t-' + browser.name + ' from ' + browser.location);
-	console.log('Testing %s URLs x %s location-browser combinations x %s rounds = %s tests', colors.magenta(urls.length), colors.magenta(settings.browsers.length), colors.magenta(settings.rounds), colors.magenta(counts.analyze));
+		console.log('\t- ' + browser.name + ' from ' + browser.location);
+	console.log('%s URLs x %s location-browser combinations x %s rounds = %s tests', colors.magenta(urls.length), colors.magenta(settings.browsers.length), colors.magenta(settings.rounds), colors.magenta(urls.length * settings.browsers.length * settings.rounds));
 
 	// Setup queue from new URLs provided
 	for (let i=0; i<settings.rounds; i++) {
 		for (let url of urls) {
 			for (let browser of settings.browsers) {
-				promisesQueue.push(new Promise((resolve, reject) => {
-					queue.create('sitespeed-analyze', {
-						url: url.trim(),
-						browser: browser
-					}).removeOnComplete(true).save(err => {
-						if (err) {
-							logger.error(err);
-							reject(err);
-						} else {
-							resolve();
-						}
-					});
+				queuePromises.push(new Promise((resolve, reject) => {
+					var job = queue.create('sitespeed-analyze-' + key, { url: url.trim(), browser: browser })
+						.attempts(settings.attempts)
+						.save(error => {
+							if (error) {
+								logger.error(error);
+								reject(error);
+							} else {
+								resolve();
+							}
+						});
+
+					job.on('failed', function(errorMessage){
+						logger.error('Job exceeded retries limit (' + settings.attempts + ')', job.data);
+					})
 				}));
 			}
 		}
 	}
 }
 
-if (!argv.v)
-	logger.remove('debug');
-
-
-var ProgressBar = require('ascii-progress');
-var analyzeBar = new ProgressBar({
-	schema: 'Launch Analysis ╢:bar╟ :current/:total :percent',
-	blank: '░',
-	filled: '█'
-});
-var reportBar = new ProgressBar({
-	schema: 'Fetch Report   ╢:bar╟ :current/:total :percent',
-	blank: '░',
-	filled: '█'
-});
-var timer = new ProgressBar({
-	schema: 'Time elapsed: :elapseds'
-});
-
-
-Promise.all(promisesQueue)
-.then(() => {
-	return new Promise((resolve, reject) => {
-		queue.inactiveCount('sitespeed-analyze', (err, total) => {
-			logger.warn('Analyze queue size is ' + total);
-			counts.analyze = total;
-			resolve();
-		});
-	})
-})
-.then(() => {
-	return new Promise((resolve, reject) => {
-		queue.inactiveCount('sitespeed-report', (err, total) => {
-			logger.warn('Report queue size is ' + total);
-			counts.report = total + counts.analyze;
-			if (counts.report > 0) {
-				resolve();
-			} else {
-				console.log(colors.red('Nothing more to do'));
-				reject('Error: Resumed called with nothing to do.')
-			}
-		});
-	});
-})
-.then(() => {
-	if (argv.r) {
-		console.log('Resuming testing...');
-		console.log('\t %s URLs more to analyze', counts.analyze);
-		console.log('\t %s URLs more to report', counts.report);
-	} else {
-		console.log('Test starting...');
-	}
-
-	analyzeBar.compile();
-	reportBar.compile();
-	timer.tick();
-	setInterval(() => {
-		timer.compile();	
-	},100);
-
-	analyzeBar.total = counts.analyze;
-	analyzeBar.update(0, { total: counts.analyze });
-
-	reportBar.total = counts.report;
-	reportBar.update(0, { total: counts.report });
-
-	// Setup worker to process start analysis of pages
-	logger.debug('Setting up worker to send analysis requests');
-	queue.process('sitespeed-analyze', settings.concurrency, (job, done) => {
-		analyze(job.data.url, job.data.browser, (data) => {
-			counts.analyzeCompleted++;
-			analyzeBar.tick();
-			if (data.status == 200) {
-				logger.debug('Request successful, adding request #' + data.reportId + ' to reporting queue');
-				queue.create('sitespeed-report', { id: data.reportId }).removeOnComplete(true).save(err => {
-					if (err) logger.error(err);
-				});
-			} else {
-				reportBar.tick();
-			}
-			done && done();
-		})
+if (argv.v)
+	logger.add(logger.winston.transports.Console, {
+		name: 'debug',
+		level: 'debug'
 	});
 
-	// Setup worker to process fetch analysis reports
-	logger.debug('Setting up worker to fetch analysis reports');
-	queue.process('sitespeed-report', settings.concurrency, (job, done) => {
-		report(job)
-		reportBar.tick();
-		if (reportBar.completed) {
-			queue.shutdown(2000, err => {
-				console.log('Testing complete, generating report...')
-				// Start report generation and finally console.log(
-				logger.debug('All reports accounted for.');
-				console.log(colors.magenta('Done!'));
-				terminate();
-		 	})
+var status = argv.r ? 'Resuming' : 'Testing';
+Promise.all(queuePromises).then(queueStat)
+	.then((counts)=> {
+		if (counts.remaining === 0) {
+			console.log(colors.red('Nothing to do'));
+			terminate(false);
 		}
-		done && done();
+
+		progress = new ProgressBar(':status ╢:bar╟ :current/:total :percent :elapsed\t[Completed :completed | Failed: :failed]', {
+			incomplete: '░',
+			complete: '█',
+			width: 80,
+			status: status,
+			total: counts.remaining,
+			completed: counts.completed,
+			failed: counts.failed
+		});	
+
+		setInterval(() => {
+			queueStat().then((counts) => {
+				console.log(counts);
+
+				progress.total = counts.total;
+				progress.update(counts.completed + counts.failed, {
+					status: status,
+					completed: counts.completed,
+					failed: counts.failed
+				});
+			}).catch(error => {
+				logger.error(error);
+			});
+		}, 500);
+	})
+	.then(() => {
+		/*
+		cfork({
+			exec: __dirname + '/lib/analyze_worker.js',
+			count: settings.concurrency,
+			env: { key: key	}
+		}).on('fork', function (worker) {
+			logger.debug('Setting up worker #' + worker.process.pid + ' for analysis tasks');
+		});
+
+
+		cfork({
+			exec: __dirname + '/lib/report_worker.js',
+			count: settings.concurrency,
+			env: { key: key	}
+		}).on('fork', function (worker) {
+			logger.debug('Setting up worker #' + worker.process.pid + ' for reporting tasks');
+		});
+		*/
+	})
+	.catch(error => {
+		logger.error(error);
+		terminate();
 	});
-	
-})
-.catch(err => {
-	logger.error(err);
+
+process.on('SIGTERM', () => {
 	terminate();
 });
 
 
-process.on('SIGTERM', () => {
-	console.log('Forced process shutdown...', err || '');
- 	terminate();
-});
+// Counts all the various states in the global queue
+function queueStat() {
+	var counts = { };
+	var countPromises = []
+
+	// Get Analysis Tasks
+	for (let report of ['analyze', 'report']) {
+		var queueName = 'sitespeed-' + report + '-' + key;
+		counts[report] = {};
+		countPromises.push(new Promise((resolve, reject) => { queue.inactiveCount(queueName, function( err, total ) { counts[report].inactive = total;	resolve(total); }); }));
+		countPromises.push(new Promise((resolve, reject) => { queue.activeCount(queueName, function( err, total ) 	{ counts[report].active = total; 		resolve(total); }); }));
+		countPromises.push(new Promise((resolve, reject) => { queue.completeCount(queueName, function( err, total ) { counts[report].completed = total;	resolve(total); }); }));
+		countPromises.push(new Promise((resolve, reject) => { queue.failedCount(queueName, function( err, total ) 	{ counts[report].failed = total;		resolve(total); }); }));
+		countPromises.push(new Promise((resolve, reject) => { queue.delayedCount(queueName, function( err, total ) 	{ counts[report].delayed = total;		resolve(total); }); }));
+	}
+
+	return Promise.all(countPromises).then(() => {
+		for (let report of ['analyze', 'report']) {
+			let subcount = counts[report];
+			subcount.remaining = subcount.active + subcount.inactive + subcount.delayed;
+			subcount.total = subcount.completed + subcount.active + subcount.inactive + subcount.failed + subcount.delayed;
+
+			for (let type of ['inactive', 'active', 'completed', 'failed', 'delayed', 'remaining', 'total']) 
+				counts[type] = (counts[type] || 0) + subcount[type];
+		}
+
+		return counts;
+	});
+}
 
 
-function terminate(time=500) {
-	queue.shutdown(time || 4000, err => {
-		logger.debug('Process terminating.');
+// Graceful shutdown
+function terminate(wait=true) {
+	if (wait) {
+		logger.debug('Shutdown max time calculated at ' + (settings.delay + settings.timeout)/1000 + 's');
+		queue.shutdown((settings.delay + settings.timeout), error => {
+			terminate(false);
+	 	})
+	} else {
+		logger.debug('Immediate Shutdown, process terminating.');
 		process.exit(0);
- 	})
+	}
 }

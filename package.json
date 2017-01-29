@@ -17,12 +17,14 @@
   },
   "homepage": "https://github.com/gaweee/sitespeed#readme",
   "dependencies": {
-    "ascii-progress": "^1.0.5",
+    "cfork": "^1.6.0",
     "colors": "^1.1.2",
     "kue": "^0.11.5",
+    "progress": "^1.1.8",
     "request": "^2.79.0",
     "sleep": "^5.1.0",
     "tmp": "0.0.31",
+    "valid-url": "^1.0.9",
     "validator": "^6.2.1",
     "winston": "^2.3.1",
     "yargs": "^6.6.0"

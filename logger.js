@@ -1,10 +1,6 @@
- var winston = require('winston');
- var logger = new (winston.Logger)({
+var winston = require('winston');
+var logger = new (winston.Logger)({
 	transports: [
-		new (winston.transports.Console)({
-			name: 'debug',
-			level: 'debug'
-		}),
 		new (winston.transports.File)({
 			name: 'request',
 			filename: 'logs/request.log',
@@ -17,6 +13,6 @@
 		})
 	]
 });
-logger.winston = winston;
 
+logger.winston = winston;
 module.exports = logger;
