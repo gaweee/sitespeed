@@ -6,6 +6,8 @@ module.exports = {
 	attempts: 5,							// Number of times a request can be tried
 	timeout: 60 * 1000,						// HTTP Timeout in miliseconds
 	delay: 20 * 1000,						// Time in miliseconds between Analyze and Report tasks
+	visualMetrics: false,					// Visual Metrics (2 credits per test)
+	metricsOnly: true,						// Prevents the download of advisory content
 	browsers: [
 		{ location: 'Sydney', name: 'Chrome', isMobile: false },
 		{ location: 'Sydney', name: 'Galaxy S6', isMobile: true },

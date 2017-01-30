@@ -19,10 +19,11 @@ Run index.js either with a url.txt file or a list of options
 * Mobile - Boolean to indicate if the browser is a mobile
 * Rounds - Number of tests to perform for each location-browser combination
 * Flags include:
-	* -r Resume a previously setup test run
+	* -d Dry Run, no actual tests
 	* -v Verbose (logging)
 
-	Usage: node index.js <url|url.txt> [options]
+	Usage: node index.js test <url|url.txt> [options]
+	Usage: node index.js resume <key> [options]
 
 
 ## How it works
@@ -33,7 +34,6 @@ A separate set of worker threads will fetch the reports from [DareBoost API](htt
 Finally the information both raw and summarized are put into a CSV file for easier processing
 
 ## Todo
-* Actual download of the report
 * Report generation
 **Note:** Still a work in progress
 

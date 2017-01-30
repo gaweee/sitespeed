@@ -1,3 +1,4 @@
+var argv = require("yargs").argv;
 var winston = require('winston');
 var logger = new (winston.Logger)({
 	transports: [
@@ -13,6 +14,13 @@ var logger = new (winston.Logger)({
 		})
 	]
 });
+
+if (argv.v || process.env.verbose == "true") {
+	logger.add(winston.transports.Console, {
+		name: 'debug',
+		level: 'debug'
+	});
+}
 
 logger.winston = winston;
 module.exports = logger;

@@ -45,8 +45,8 @@ var queueIterator = function(ids, queueFilterChain, queueActionChain) {
     // get the kue job
     kue.Job.get(id, function(err, job) {
     	if (err || !job) return;
-      var filterIterator = function(filter) { return filter.test(job) };
-      var actionIterator = function(filter) { return filter.apply(job) };
+      var filterIterator = function(filter) { return filter.test(job); };
+      var actionIterator = function(filter) { return filter.apply(job); };
 
       // apply filter chain
       if(queueFilterChain.every(filterIterator)) {
@@ -59,7 +59,7 @@ var queueIterator = function(ids, queueFilterChain, queueActionChain) {
 };
 
 function performCleanup() {
-  var ki = new kue;
+  var ki = new kue();
 
   ki.failed(function(err, ids) {
     if (!ids) return;

@@ -24,6 +24,7 @@
     "request": "^2.79.0",
     "sleep": "^5.1.0",
     "tmp": "0.0.31",
+    "underscore": "^1.8.3",
     "valid-url": "^1.0.9",
     "validator": "^6.2.1",
     "winston": "^2.3.1",
