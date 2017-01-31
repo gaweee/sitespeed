@@ -1,5 +1,5 @@
 module.exports = {
-	token: 'YOUR TOKEN HERE',
+	token: '5883909d0cf24b310ad66514',
 	domain: 'https://www.dareboost.com/api/0.5/',
 	rounds: 1,								// Rounds of testing in a given run
 	concurrency: 2,							// Number of concurrent threads

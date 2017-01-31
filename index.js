@@ -5,7 +5,7 @@ var colors = require('colors');
 var tmp = require('tmp');
 var argv = require("yargs");
 
-var ProgressBar = require('progress');
+var ProgressBar = require('ascii-progress');
 var settings = require(__dirname + '/settings.js');
 var logger = require(__dirname + '/logger.js');
 var cfork = require('cfork');
@@ -23,6 +23,7 @@ var progress;
 cfork({ exec: __dirname + '/workers/cleanup.js', count: 1 });
 
 /*------------------- CLI Definitions -------------------*/
+// @Todo: Generate Command
 argv.command('test', 'Test a url or a set of urls',
 		function(yargs) {
 			yargs.usage(`usage: $0 test <url|url.txt> [options]
@@ -96,7 +97,7 @@ The options defaults to the settings.js file configuration if ommitted.`)
 						queuePromises.push(new Promise((resolve, reject) => {
 							var job = queue.create('sitespeed-analyze-' + key, { url: url.trim(), browser: browser })
 								.attempts(settings.attempts)
-								.save(error => {
+								.save((error) => {
 									if (error) {
 										logger.error(error);
 										reject(error);
@@ -130,7 +131,7 @@ The options defaults to the settings.js file configuration if ommitted.`)
 	.help('help')
 	.argv;
 
-
+var timerProgress, timerShutdown;
 Promise.all(queuePromises).then(queueStat)
 	.then((counts)=> {
 		if (counts.remaining === 0) {
@@ -138,48 +139,58 @@ Promise.all(queuePromises).then(queueStat)
 			terminate(false);
 		}
 
-		progress = new ProgressBar('╢:bar╟ :current/:total :percent :elapsed\t[Completed :completed | Failed: :failed]', {
-			incomplete: '░',
-			complete: '█',
+		progress = new ProgressBar({
+			schema: '╢:bar╟ :current/:total :percent :elapsed \t[.white Completed :completed.green |.white Failed: :failed.red ]',
+			blank: '░',
+			filled: '█',
 			width: 80,
 			total: counts.total,
 			completed: counts.completed,
 			failed: counts.failed
 		});	
 
-		setInterval(() => {
+
+		timerProgress = setInterval(() => {
 			queueStat().then((counts) => {
+				logger.debug(JSON.stringify(counts));
+
 				progress.total = counts.total;
 				progress.update((counts.completed + counts.failed)/counts.total, {
 					completed: counts.completed,
 					failed: counts.failed
 				});
 
-				logger.debug(JSON.stringify(counts));
-			}).catch(error => {
+				if (progress.completed && !timerShutdown) {
+					timerShutdown = setTimeout(() => {
+						// @Todo: Promise based generateCSV(), then terminate
+						terminate();
+					}, 10000)
+				} else if (!progress.completed && timerShutdown)
+					clearTimeout(timerShutdown);
+
+			}).catch((error) => {
 				logger.error(error);
 			});
 		}, 500);
 	})
 	.then(() => {
-		// @Todo: Figure out why count is not working
 		cfork({
 			exec: __dirname + '/workers/analyze_worker.js',
+			args: ['analysis'],
 			count: settings.concurrency,
-			env: { key: key, pretend: argv.p, verbose: argv.v }
-		}).on('fork', function (worker) {
-			logger.debug('Setting up worker #' + worker.process.pid + ' for analysis tasks');
+			env: { key: key, pretend: argv.p, verbose: argv.v, parentPid: process.pid }
 		});
 
 		cfork({
 			exec: __dirname + '/workers/report_worker.js',
+			args: ['reporting'],
 			count: settings.concurrency,
-			env: { key: key, pretend: argv.p, verbose: argv.v }
+			env: { key: key, pretend: argv.p, verbose: argv.v, parentPid: process.pid }
 		}).on('fork', function (worker) {
-			logger.debug('Setting up worker #' + worker.process.pid + ' for reporting tasks');
+			logger.debug('Setting up worker #' + worker.process.pid + ' for ' + worker.process.spawnargs[2]);
 		});
-	})
-	.catch(error => {
+	})	
+	.catch((error) => {
 		logger.error(error);
 		terminate();
 	});
@@ -198,10 +209,10 @@ function queueStat() {
 		var queueName = 'sitespeed-' + report + '-' + key;
 		counts[report] = {};
 		countPromises.push(new Promise((resolve, reject) => { queue.inactiveCount(queueName, function( err, total ) { counts[report].inactive = total;	resolve(total); }); }));
-		countPromises.push(new Promise((resolve, reject) => { queue.activeCount(queueName, function( err, total ) 	{ counts[report].active = total; 		resolve(total); }); }));
+		countPromises.push(new Promise((resolve, reject) => { queue.activeCount(queueName, function( err, total ) 	{ counts[report].active = total; 	resolve(total); }); }));
 		countPromises.push(new Promise((resolve, reject) => { queue.completeCount(queueName, function( err, total ) { counts[report].completed = total;	resolve(total); }); }));
-		countPromises.push(new Promise((resolve, reject) => { queue.failedCount(queueName, function( err, total ) 	{ counts[report].failed = total;		resolve(total); }); }));
-		countPromises.push(new Promise((resolve, reject) => { queue.delayedCount(queueName, function( err, total ) 	{ counts[report].delayed = total;		resolve(total); }); }));
+		countPromises.push(new Promise((resolve, reject) => { queue.failedCount(queueName, function( err, total ) 	{ counts[report].failed = total;	resolve(total); }); }));
+		countPromises.push(new Promise((resolve, reject) => { queue.delayedCount(queueName, function( err, total ) 	{ counts[report].delayed = total;	resolve(total); }); }));
 	}
 
 	return Promise.all(countPromises).then(() => {
@@ -223,11 +234,16 @@ function queueStat() {
 function terminate(wait=true) {
 	if (wait) {
 		logger.debug('Shutdown max time calculated at ' + (settings.delay + settings.timeout)/1000 + 's');
-		queue.shutdown((settings.delay + settings.timeout), error => {
+		queue.shutdown((settings.delay + settings.timeout), (error) => {
 			terminate(false);
 	 	});
 	} else {
 		logger.debug('Immediate Shutdown, process terminating.');
 		process.exit(0);
 	}
+}
+
+
+function generateCSV() {
+
 }
