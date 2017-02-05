@@ -17,8 +17,8 @@ var queuePromises = [];
 var kue = require('kue');
 var queue = kue.createQueue();
 var progress;
-kue.app.listen(3000);
-// queue.watchStuckJobs(8000);
+//kue.app.listen(3000);
+queue.watchStuckJobs(8000);
 
 // Start cleanup
 cfork({ exec: __dirname + '/workers/cleanup.js', count: 1 });
@@ -48,7 +48,23 @@ The options defaults to the settings.js file configuration if ommitted.`)
 				},
 				rounds: {
 					alias: 'n',
-					description: 'Number of tests',
+					description: 'Number of tests made to each url-browser configuration, defaults to ' + settings.rounds,
+				},
+				attempts: {
+					alias: 'a',
+					description: 'Number of HTTP attempts before marking as failed, defaults to ' + settings. attempts
+				},
+				concurrency: {
+					alias: 'c',
+					description: 'Number of workers, defaults to ' + settings.concurrency + ' workers'
+				},
+				delay: {
+					alias: 'd',
+					description: 'Delay between requests (throttling), defaults to ' + settings.delay + 'ms'
+				},
+				timeout: {
+					alias: 't',
+					description: 'HTTP request timeout, defaults to ' + settings.timeout + 'ms'
 				}
 			})
 			.describe('p', 'Pretend, only simluates the test')
