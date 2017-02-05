@@ -5,7 +5,7 @@ var colors = require('colors');
 var tmp = require('tmp');
 var argv = require("yargs");
 
-var ProgressBar = require('ascii-progress');
+var ProgressBar = require('progress');
 var settings = require(__dirname + '/settings.js');
 var logger = require(__dirname + '/logger.js');
 var cfork = require('cfork');
@@ -17,6 +17,7 @@ var queuePromises = [];
 var kue = require('kue');
 var queue = kue.createQueue();
 var progress;
+kue.app.listen(3000);
 // queue.watchStuckJobs(8000);
 
 // Start cleanup
@@ -132,23 +133,22 @@ The options defaults to the settings.js file configuration if ommitted.`)
 	.argv;
 
 var timerProgress, timerShutdown;
-Promise.all(queuePromises).then(queueStat)
+Promise.all(queuePromises)
+	.then(queueStat)
 	.then((counts)=> {
 		if (counts.remaining === 0) {
 			console.log(colors.red('Nothing to do'));
 			terminate(false);
 		}
 
-		progress = new ProgressBar({
-			schema: '╢:bar╟ :current/:total :percent :elapsed \t[.white Completed :completed.green |.white Failed: :failed.red ]',
-			blank: '░',
-			filled: '█',
+		progress = new ProgressBar('╢:bar╟ :current/:total :percent :elapsed \t[Completed :completed |Failed: :failed]', {
+			incomplete: '░',
+			complete: '█',
 			width: 80,
 			total: counts.total,
 			completed: counts.completed,
 			failed: counts.failed
 		});	
-
 
 		timerProgress = setInterval(() => {
 			queueStat().then((counts) => {
@@ -180,7 +180,7 @@ Promise.all(queuePromises).then(queueStat)
 			count: settings.concurrency,
 			env: { key: key, pretend: argv.p, verbose: argv.v, parentPid: process.pid }
 		});
-
+		
 		cfork({
 			exec: __dirname + '/workers/report_worker.js',
 			args: ['reporting'],
