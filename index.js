@@ -197,6 +197,8 @@ function queueStat() {
 				counts[type] = (counts[type] || 0) + subcount[type];
 		}
 
+		counts.finished = counts.completed + counts.failed;
+
 		return counts;
 	});
 }
@@ -240,19 +242,22 @@ function startWorkers() {
 					logger.debug(JSON.stringify(counts));
 
 					progress.total = counts.total;
-					progress.update((counts.completed + counts.failed)/counts.total, {
+					progress.update(counts.finished/counts.total, {
 						completed: counts.completed,
 						failed: counts.failed
 					});
 
-					if (progress.completed && !timerShutdown) {
+					if (counts.finished == counts.total && typeof timerShutdown == 'undefined') {
 						timerShutdown = setTimeout(() => {
-							generateCSV(key);
-							terminate();
-						}, 10000)
-					} else if (!progress.completed && timerShutdown)
-						clearTimeout(timerShutdown);
-
+							generateCSV(key)
+							.catch((error) => {
+								logger.error(error);
+							})
+							.then(() => {
+								terminate();
+							});
+						}, 3000)
+					}
 				}).catch((error) => {
 					logger.error(error);
 				});

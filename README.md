@@ -49,7 +49,8 @@ All JSON data and the HAR files are downloaded in the reporting folder
 A progress bar tracks the jobs progress, failed and completed tasks.  
 Once completed, the information both raw and summarized are put into a CSV file for easier processing  
 
-## Todo
-* Report generation
-**Note:** Still a work in progress
 
+## Todo
+* Refactor worker threads to use sockets for stats and critical errors
+* Remove progress bar once completed
+* Command 'retry' to retry errors (only those that have failed max attempts, not those with Critical errors)
